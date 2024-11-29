@@ -248,6 +248,18 @@ public:
    */
   bool infer(void);
 
+    /**
+   * Performs inference on the current data.
+   * @return true if inference was successful, false otherwise.
+   */
+  bool doInference(const int batchSize);
+
+  /**
+   * Alias for doInference, performs inference on the current data.
+   * @return true if inference was successful, false otherwise.
+   */
+  bool infer(const int batchSize);
+
   /**
    * Draws bounding boxes on an image.
    * @param img the image on which to draw bounding boxes.
@@ -363,6 +375,8 @@ public:
    */
   void makeBbox(const int imageH, const int imageW);
 
+  std::vector<BBoxInfo> getBbox(const int imageH, const int imageW, const int batchIndex);
+  
   /**
    * Return BBox.
    * 
@@ -494,6 +508,7 @@ public:
    * Host-side input buffer for the model, typically used for pre-processing input data before inference.
    */
   std::vector<float> input_h_;
+  std::vector<std::vector<float>> batched_input_h_;  
 
   /**
    * Device-side input buffer for the model, used to store the input data on the GPU.

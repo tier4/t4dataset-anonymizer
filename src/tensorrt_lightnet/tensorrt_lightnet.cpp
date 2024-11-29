@@ -400,20 +400,30 @@ namespace tensorrt_lightnet
       return;
     }    
     const auto batch_size = images.size();
-    auto input_dims = trt_common_->getBindingDimensions(0);
+    auto input_dims = trt_common_->getBindingDimensions(0);    
     input_dims.d[0] = batch_size; // Adjust the batch size in dimensions.
-    trt_common_->setBindingDimensions(0, input_dims); // Update dimensions with the new batch size.
+    bool flg = trt_common_->setBindingDimensions(0, input_dims); // Update dimensions with the new batch size.
+
     const float inputH = static_cast<float>(input_dims.d[2]);
     const float inputW = static_cast<float>(input_dims.d[3]);
 
     // Normalize images and convert to blob directly without additional copying.
     float scale = 1 / 255.0;
-    const auto nchw_images = cv::dnn::blobFromImages(images, scale, cv::Size(inputW, inputH), cv::Scalar(0.0, 0.0, 0.0), true);   
 
+    for (int i = 0; i < static_cast<int>(images.size()); i++) {
+      const auto nchw_images = cv::dnn::blobFromImage(images[i], scale, cv::Size(inputW, inputH), cv::Scalar(0.0, 0.0, 0.0), true);    
+      // If the data is continuous, we can use it directly. Otherwise, we need to clone it for contiguous memory.
+      auto data = nchw_images.isContinuous() ? nchw_images.reshape(1, nchw_images.total()) : nchw_images.reshape(1, nchw_images.total()).clone();
+      CHECK_CUDA_ERROR(cudaMemcpyAsync(input_d_.get()+data.rows*i, data.data, data.rows * sizeof(float), cudaMemcpyHostToDevice, *stream_));
+    }
+    
+    /*
+    const auto nchw_images = cv::dnn::blobFromImages(images, scale, cv::Size(inputW, inputH), cv::Scalar(0.0, 0.0, 0.0), true);      
     // If the data is continuous, we can use it directly. Otherwise, we need to clone it for contiguous memory.
     input_h_ = nchw_images.isContinuous() ? nchw_images.reshape(1, nchw_images.total()) : nchw_images.reshape(1, nchw_images.total()).clone();
     // Ensure the input device buffer is allocated with the correct size and copy the data.
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice, *stream_));    
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice, *stream_));
+    */
   }
 
   /**
@@ -442,6 +452,7 @@ namespace tensorrt_lightnet
     trt_common_->enqueueV2(buffers.data(), *stream_, nullptr);
 
     // Retrieve output tensors from device buffers
+    const auto input_dims = trt_common_->getBindingDimensions(0);
     for (int i = 1; i < trt_common_->getNbBindings(); i++) {
       const auto dims = trt_common_->getBindingDimensions(i);
       const auto output_size = std::accumulate(dims.d + 1, dims.d + dims.nbDims, 1, std::multiplies<int>());
@@ -450,6 +461,44 @@ namespace tensorrt_lightnet
     cudaStreamSynchronize(*stream_);
     return true;
   }
+
+  /**
+   * Prepares the inference by ensuring the network is initialized and setting up the input tensor.
+   * @return True if the network is already initialized; false otherwise.
+   */
+  bool TrtLightnet::doInference(const int batchSize)
+  {
+    if (!trt_common_->isInitialized()) {
+      return false;
+    }
+    return infer(batchSize);
+  }
+
+  /**
+   * Executes the inference operation by setting up the buffers, launching the network, and transferring the outputs.
+   * @return Always returns true to indicate the inference operation was called.
+   */
+  bool TrtLightnet::infer(const int batchSize)
+  {
+    std::vector<void *> buffers = {input_d_.get()};
+    for (int i = 0; i < static_cast<int>(output_d_.size()); i++) {
+      buffers.push_back(output_d_.at(i).get());
+    }
+
+    trt_common_->enqueueV2(buffers.data(), *stream_, nullptr);
+
+    // Retrieve output tensors from device buffers
+    const auto input_dims = trt_common_->getBindingDimensions(0);
+    for (int i = 1; i < trt_common_->getNbBindings(); i++) {
+      auto dims = trt_common_->getBindingDimensions(i);
+      dims.d[0] = batchSize;
+      auto output_size = std::accumulate(dims.d + 1, dims.d + dims.nbDims, 1, std::multiplies<int>());
+      output_size *= batchSize;
+      CHECK_CUDA_ERROR(cudaMemcpyAsync(output_h_.at(i-1).get(), output_d_.at(i-1).get(), sizeof(float) * output_size, cudaMemcpyDeviceToHost, *stream_));
+    }
+    cudaStreamSynchronize(*stream_);
+    return true;
+  }  
 
   /**
    * Draws bounding boxes on an image based on detection results.
@@ -502,7 +551,7 @@ namespace tensorrt_lightnet
 	}
       }
       cv::rectangle(img, cv::Point(bbi.box.x1, bbi.box.y1), cv::Point(bbi.box.x2, bbi.box.y2), color, 4);
-      cv::putText(img, stream.str(), cv::Point(bbi.box.x1, bbi.box.y1 - 5), 0, 0.5, color, 1);
+      //      cv::putText(img, stream.str(), cv::Point(bbi.box.x1, bbi.box.y1 - 5), 0, 0.5, color, 1);
     }
   }
 
@@ -547,6 +596,41 @@ namespace tensorrt_lightnet
     bbox_ = nonMaximumSuppression(nms_threshold_, bbox_); // Apply NMS and return the filtered bounding boxes.
     //bbox_ = nmsAllClasses(nms_threshold_, bbox_, num_class_); // Apply NMS and return the filtered bounding boxes.
   }
+
+  std::vector<BBoxInfo> TrtLightnet::getBbox(const int imageH, const int imageW, const int batchIndex)
+  {
+    bbox_.clear();
+    const auto inputDims = trt_common_->getBindingDimensions(0);
+    int inputW = inputDims.d[3];
+    int inputH = inputDims.d[2];
+    // Channel size formula to identify relevant tensor outputs for bounding boxes.
+    int chan_size = (4 + 1 + num_class_) * num_anchor_;
+    int tlr_size = (4 + 1 + num_class_ + 3 + 2) * num_anchor_;
+
+    int detection_count = 0;
+    for (int i = 0; i < trt_common_->getNbBindings(); i++) {
+      if (trt_common_->bindingIsInput(i)) {
+	continue;
+      }
+      const auto dims = trt_common_->getBindingDimensions(i);
+      int gridW = dims.d[3];
+      int gridH = dims.d[2];
+      int chan = dims.d[1];
+      float *p_output = &((output_h_.at(i-1).get())[batchIndex * (gridW * gridH * chan)]);
+      if (chan_size == chan) { // Filtering out the tensors that match the channel size for detections.
+	std::vector<BBoxInfo> b = decodeTensor(0, imageH, imageW, inputH, inputW, &(anchors_[num_anchor_ * (detection_count) * 2]), num_anchor_, p_output, gridW, gridH);
+	bbox_.insert(bbox_.end(), b.begin(), b.end());
+	detection_count++;
+      } else if (tlr_size == chan) {
+	//Decode TLR Tensor
+	std::vector<BBoxInfo> b = decodeTLRTensor(0, imageH, imageW, inputH, inputW, &(anchors_[num_anchor_ * (detection_count) * 2]), num_anchor_, p_output, gridW, gridH);
+	bbox_.insert(bbox_.end(), b.begin(), b.end());
+	detection_count++;
+      }
+    }
+
+    return nonMaximumSuppression(nms_threshold_, bbox_); // Apply NMS and return the filtered bounding boxes.
+  }  
 
   /**
    * Clears the detected bounding boxes specifically from the subnet.
