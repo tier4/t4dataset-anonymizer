@@ -177,7 +177,7 @@ void TrtCommon::setup()
 	  ext += "-lastFP16";
 	}
       }
-      ext += "-batch" + std::to_string(batch_config_[0]) + ".engine";
+      ext += "-batch" + std::to_string(batch_config_[2]) + ".engine";
     }
     cache_engine_path.replace_extension(ext);
 
@@ -502,7 +502,7 @@ bool TrtCommon::buildEngineFromOnnx(
     // Attention : below API is deprecated in TRT8.4
     builder->setMaxBatchSize(batch_config_.at(2));
   } else {
-    if (build_config_->profile_per_layer) {
+    //if (build_config_->profile_per_layer) {
       auto profile = builder->createOptimizationProfile();
       profile->setDimensions(
         network->getInput(0)->getName(), nvinfer1::OptProfileSelector::kMIN,
@@ -514,7 +514,7 @@ bool TrtCommon::buildEngineFromOnnx(
         network->getInput(0)->getName(), nvinfer1::OptProfileSelector::kMAX,
         nvinfer1::Dims4{batch_config_.at(2), input_channel, input_height, input_width});
       config->addOptimizationProfile(profile);
-    }
+      //}
   }
   if (precision_ == "int8" && calibrator_) {
     config->setFlag(nvinfer1::BuilderFlag::kINT8);
