@@ -150,7 +150,8 @@ void inferSubnetLightnets(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_li
   int num = (int)bbox.size();
   std::vector<std::vector<tensorrt_lightnet::BBoxInfo>> tmpBbox;
   tmpBbox.resize(numWorks);
-  #pragma omp parallel for
+  int count = 0;
+  #pragma omp parallel for  
   for (int p = 0; p < numWorks; p++) {
     std::vector<tensorrt_lightnet::BBoxInfo> subnetBbox;
     for (int i = (p) * num / numWorks; i < (p+1) * num / numWorks; i++) {
@@ -164,6 +165,7 @@ void inferSubnetLightnets(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_li
       if (!flg) {
 	continue;
       }
+      count++;
       cv::Rect roi(b.box.x1, b.box.y1, b.box.x2-b.box.x1, b.box.y2-b.box.y1);
       cv::Mat cropped = (image)(roi);
       subnet_trt_lightnets[p]->preprocess({cropped});
@@ -180,7 +182,7 @@ void inferSubnetLightnets(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_li
     }
     tmpBbox[p] = subnetBbox;
   }
-  
+  std::cout << "obj count " << count << std::endl; 
   for (int p = 0; p < numWorks; p++) {
     trt_lightnet->appendSubnetBbox(tmpBbox[p]);
   }
@@ -236,7 +238,7 @@ void mergeResults(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_lightnet, 
  */
 void inferBatchedSubnetLightnets(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_lightnet, std::vector<std::shared_ptr<tensorrt_lightnet::TrtLightnet>> subnet_trt_lightnets, cv::Mat &image, std::vector<std::string> &names, std::vector<std::string> &target, const int numWorks, int maxBatchSize)
 {
-  auto start = std::chrono::system_clock::now();  
+  //auto start = std::chrono::system_clock::now();  
   std::vector<tensorrt_lightnet::BBoxInfo> bbox = trt_lightnet->getBbox();
   trt_lightnet->clearSubnetBbox();
   int num = (int)bbox.size();
@@ -260,22 +262,26 @@ void inferBatchedSubnetLightnets(std::shared_ptr<tensorrt_lightnet::TrtLightnet>
     cv::Rect roi(b.box.x1, b.box.y1, b.box.x2-b.box.x1, b.box.y2-b.box.y1);
     cropped.push_back((image)(roi));
   }
+  /*
   auto end = std::chrono::system_clock::now();
   auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start); 
   std::cout << "cropp : " << elapsed_ms.count() << " msec @" << maxBatchSize << std::endl;
 
   start = std::chrono::system_clock::now();  
+  */
   subnet_trt_lightnets[0]->preprocess(cropped);
+  /*
   end = std::chrono::system_clock::now();
   elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   std::cout << "preprocess : " << elapsed_ms.count() << " msec" << std::endl;
-
   start = std::chrono::system_clock::now();    
+  */
   subnet_trt_lightnets[0]->doInference(cropped.size());
+  /*
   end = std::chrono::system_clock::now();
   elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   std::cout << "infer : " << elapsed_ms.count() << " msec" << std::endl;
-  
+  */
   int actual_batch_size = 0;
   for (int bs = 0; bs < maxBatchSize; bs++) {      
     auto b = bbox[bs];
@@ -349,7 +355,7 @@ void drawLightNet(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_lightnet, 
 void drawSubnetLightNet(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_lightnet, cv::Mat &image, std::vector<std::vector<int>> &colormap, std::vector<std::string> &subnet_names)
 {
   std::vector<tensorrt_lightnet::BBoxInfo> subnet_bbox = trt_lightnet->getSubnetBbox();  
-  trt_lightnet->drawBbox(image, subnet_bbox, colormap, subnet_names);		
+  trt_lightnet->drawBbox(image, subnet_bbox, colormap, subnet_names, true);		
 }
 
 /**
@@ -372,11 +378,11 @@ void blurObjectFromSubnetBbox(std::shared_ptr<tensorrt_lightnet::TrtLightnet> tr
       cv::Rect roi(b.box.x1+w_offset, b.box.y1+h_offset, width-w_offset*2, height-h_offset*2);
       cropped = (image)(roi);
       if (width > 320 && height > 320) {
-	cv::blur(cropped, cropped, cv::Size(kernel*8, kernel*8));
+	cv::blur(cropped, cropped, cv::Size(kernel*16, kernel*16));
       } else if (width > 160 && height > 160) {
-	cv::blur(cropped, cropped, cv::Size(kernel*4, kernel*4));
+	cv::blur(cropped, cropped, cv::Size(kernel*8, kernel*8));
       } else {
-	cv::blur(cropped, cropped, cv::Size(kernel, kernel));
+	cv::blur(cropped, cropped, cv::Size(kernel*4, kernel*4));
       }
     }
   }
@@ -841,7 +847,7 @@ main(int argc, char* argv[])
       if (get_calc_entropy_flg()) {
 	trt_lightnet->calcEntropyFromSoftmax();
       }
-      
+      //      if(1){
       if (!visualization_config.dont_show) {
 	drawLightNet(trt_lightnet, image, visualization_config.colormap, visualization_config.names);
 	if (get_subnet_onnx_path() != "not-specified" && subnet_trt_lightnets.size()) {
@@ -894,10 +900,10 @@ main(int argc, char* argv[])
       }
       
       if (!visualization_config.dont_show) {
-	//drawLightNet(trt_lightnet, image, visualization_config.colormap, visualization_config.names);
 	if (get_subnet_onnx_path() != "not-specified" && subnet_trt_lightnets.size()) {
-	  //drawSubnetLightNet(trt_lightnet, image, subnet_visualization_config.colormap, subnet_visualization_config.names);
-	}
+	  drawSubnetLightNet(trt_lightnet, image, subnet_visualization_config.colormap, subnet_visualization_config.names);
+	}	
+	drawLightNet(trt_lightnet, image, visualization_config.colormap, visualization_config.names);
       }
       if (flg_save) {
 	std::ostringstream sout;

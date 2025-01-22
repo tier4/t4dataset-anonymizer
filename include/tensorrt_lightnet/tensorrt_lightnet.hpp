@@ -267,7 +267,7 @@ public:
    * @param colormap the colors for each class.
    * @param names the names of the classes.
    */
-  void drawBbox(cv::Mat &img, std::vector<BBoxInfo> bboxes, std::vector<std::vector<int>> &colormap, std::vector<std::string> names);
+  void drawBbox(cv::Mat &img, std::vector<BBoxInfo> bboxes, std::vector<std::vector<int>> &colormap, std::vector<std::string> names, bool filled = false);
 
   /**
    * Decodes the output tensor into bounding box information.
