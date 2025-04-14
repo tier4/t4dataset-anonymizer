@@ -150,7 +150,6 @@ void inferSubnetLightnets(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_li
   int num = (int)bbox.size();
   std::vector<std::vector<tensorrt_lightnet::BBoxInfo>> tmpBbox;
   tmpBbox.resize(numWorks);
-  int count = 0;
   #pragma omp parallel for  
   for (int p = 0; p < numWorks; p++) {
     std::vector<tensorrt_lightnet::BBoxInfo> subnetBbox;
@@ -165,7 +164,6 @@ void inferSubnetLightnets(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_li
       if (!flg) {
 	continue;
       }
-      count++;
       cv::Rect roi(b.box.x1, b.box.y1, b.box.x2-b.box.x1, b.box.y2-b.box.y1);
       cv::Mat cropped = (image)(roi);
       subnet_trt_lightnets[p]->preprocess({cropped});
@@ -182,7 +180,7 @@ void inferSubnetLightnets(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_li
     }
     tmpBbox[p] = subnetBbox;
   }
-  std::cout << "obj count " << count << std::endl; 
+
   for (int p = 0; p < numWorks; p++) {
     trt_lightnet->appendSubnetBbox(tmpBbox[p]);
   }

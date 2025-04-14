@@ -3,6 +3,12 @@
 The "t4dataset-anonymizer" enables real-time image anonymization for the T4 dataset.
 This pipeline uses "trt-lightnet <sup>[[1]](#trt-lightnet)</sup>".
 
+
+
+https://github.com/user-attachments/assets/5831e723-7fc6-4501-8b2c-ac13a95ece86
+
+
+
 ## Installation
 
 ### Requirements
