@@ -328,7 +328,7 @@ void drawLightNet(std::shared_ptr<tensorrt_lightnet::TrtLightnet> trt_lightnet, 
   for (const auto &mask : masks) {
     cv::Mat resized;
     cv::resize(mask, resized, cv::Size(image.cols, image.rows), 0, 0, cv::INTER_NEAREST);
-    cv::addWeighted(image, 1.0, resized, 0.85, 0.0, image);
+    cv::addWeighted(image, 1.0, resized, 0.1, 0.0, image);
     cv::imshow("mask", mask);
   }
   for (const auto &depth : depthmaps) {
@@ -795,6 +795,9 @@ main(int argc, char* argv[])
 	  }
 	  if (1) {
 	    fs::path t4_anonymized_data = t4_dataset / "anonymized_data";
+	    if (is_overwrite()) {
+	      t4_anonymized_data = t4_dataset / "data";
+	    }
 	    fs::path t4_anonymized_cam_data = t4_anonymized_data / cam_name;
 	    fs::create_directory(t4_anonymized_data);
 	    fs::create_directory(t4_anonymized_cam_data);

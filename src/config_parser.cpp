@@ -14,6 +14,9 @@ DEFINE_string(onnx, "lightnet-tiny.onnx",
 DEFINE_bool(dont_show, false,
 	    "[Optional] Flag to off screen");
 
+DEFINE_bool(overwrite, false,
+	    "[Optional] Flag to overwrite");
+
 DEFINE_string(d, "",
               "Directory Path, "
               "Directory Path");
@@ -642,4 +645,10 @@ bool
 get_calc_entropy_flg(void)
 {
   return FLAGS_entropy;
+}
+
+bool
+is_overwrite(void)
+{
+  return FLAGS_overwrite;
 }

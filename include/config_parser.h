@@ -328,3 +328,6 @@ get_workers(void);
 
 bool
 get_calc_entropy_flg(void);
+
+bool
+is_overwrite(void);
