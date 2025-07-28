@@ -79,9 +79,9 @@ Inference from images
 $ ./t4dataset-anonymizer --flagfile ../configs/CONFIGS.txt  --v VIDEO
 ```
 
-Inference from t4dataset and generate anonymized data into "{ROSBAG_NAME}/anonymized_data/"
+Inference from t4dataset and generate anonymized data into "{T4_DATASET_NAME}/anonymized_data/"
 ```shell
-$ ./t4dataset-anonymizer --flagfile ../configs/CONFIGS.txt --dont_show --t4d {ROSBAG_NAME}
+$ ./t4dataset-anonymizer --flagfile ../configs/CONFIGS.txt --dont_show --t4d {T4_DATASET_NAME}
 ```
 
 
